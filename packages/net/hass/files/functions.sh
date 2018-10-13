@@ -10,7 +10,7 @@ function register_hook {
         exit 1
     fi
     interface=$1
-    
+
     hostapd_cli -i$interface -a/usr/lib/hass/push_event.sh &
 }
 
@@ -21,21 +21,21 @@ function post {
         exit 1
     fi
     payload=$1
-    
+
     config_get hass_host global host
     config_get hass_pw global pw
-    
+
     resp=$(curl "$hass_host/api/services/device_tracker/see" -sfSX POST \
         -H 'Content-Type: application/json' \
         -H "X-HA-Access: $hass_pw" \
         --data-binary "$payload" 2>&1)
-    
+
     if [ $? -eq 0 ]; then
         level=debug
     else
         level=error
     fi
-    
+
     logger -t $0 -p $level "post response $resp"
 }
 
@@ -49,7 +49,7 @@ function build_payload {
     mac=$1
     host=$2
     consider_home=$3
-    
+
     echo "{\"mac\":\"$mac\",\"host_name\":\"$host\",\"consider_home\":\"$consider_home\",\"source_type\":\"router\"}"
 }
 
@@ -65,18 +65,14 @@ function get_host_name {
 
 function push_event {
     logger -t $0 -p debug "push_event $@"
-    if [ "$#" -ne 3 ]; then
-        err_msg "Illegal number of push_event parameters"
-        exit 1
-    fi
-    iface=$1
-    msg=$2
-    mac=$3
-    
+
     config_get hass_timeout_conn global timeout_conn
     config_get hass_timeout_disc global timeout_disc
-    
-    case $msg in 
+
+#   iface=$1
+
+    msg=$2
+    case $msg in
         "AP-STA-CONNECTED")
             timeout=$hass_timeout_conn
             ;;
@@ -87,12 +83,20 @@ function push_event {
             timeout=$hass_timeout_disc
             ;;
         *)
-            logger -t $0 -p warning "push_event not handled"
+            logger -t $0 -p warning "push_event '$msg' not handled"
             return
             ;;
     esac
 
-    post $(build_payload "$mac" "$(get_host_name $mac)" "$timeout")
+    mac=$3
+    host_name=$(get_host_name $mac)
+    
+    if [ "$host_name" -eq "" ]; then
+        logger -t $0 -p debug "push_event not handled as no hostname"
+        exit
+    fi
+
+    post $(build_payload "$mac" "$host_name" "$timeout")
 }
 
 function sync_state {
